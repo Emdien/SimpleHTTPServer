@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -71,61 +72,86 @@ void process_web_request(int descriptorFichero)
 	//
 	// Definir buffer y variables necesarias para leer las peticiones
 	//
-	char buffer[BUFSIZE];
-	memset(buffer, 0, BUFSIZE);
-	int readsize = 0;	
-	//
-	// Leer la petición HTTP
-	//
-	readsize = read(descriptorFichero, buffer, BUFSIZE);
-	printf("Cadena recibida: %s", buffer);
+
 	
-	
-	//
-	// Comprobación de errores de lectura (?)
-	//
-	
-	
-	//
-	// Si la lectura tiene datos válidos terminar el buffer con un \0
-	//
-	
-	buf[readsize] = '\0';
-	
-	//
-	// Se eliminan los caracteres de retorno de carro y nueva linea
-	//
-	
-	
-	//
-	//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
-	//	(Se soporta solo GET)
-	//
-	
-	
-	//
-	//	Como se trata el caso de acceso ilegal a directorios superiores de la
-	//	jerarquia de directorios
-	//	del sistema
-	//
-	
-	
-	//
-	//	Como se trata el caso excepcional de la URL que no apunta a ningún fichero
-	//	html
-	//
-	
-	
-	//
-	//	Evaluar el tipo de fichero que se está solicitando, y actuar en
-	//	consecuencia devolviendolo si se soporta u devolviendo el error correspondiente en otro caso
-	//
-	
-	
-	//
-	//	En caso de que el fichero sea soportado, exista, etc. se envia el fichero con la cabecera
-	//	correspondiente, y el envio del fichero se hace en blockes de un máximo de  8kB
-	//
+	fd_set fdset;	// Conjunto de descriptores de ficheros.
+	struct timeval tv;
+	int retval;
+
+	// Queremos trabajar con el fd  "descriptorFichero"
+	// Vacio el conjunto de descriptores de fichero
+	// Añado el descriptor de fichero al conjunto
+	FD_ZERO(&fdset); 
+	FD_SET(descriptorFichero, &fdset);
+
+	// Espero hasta 5 segundos (Siguiendo el ejemplo de man 2 select)
+	tv.tv_sec = 30;
+	tv.tv_usec = 0;
+
+	retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv);
+
+	// Si en el readfds hay caracteres disponibles (1 = readfds = lectura)
+	// Procedo a manejar dichos caracteres disponibles
+
+	if (retval) {			// Tengo que hacer loop?
+
+		char buffer[BUFSIZE];
+		memset(buffer, 0, BUFSIZE);
+		int readsize = 0;	
+		//
+		// Leer la petición HTTP
+		//
+		readsize = read(descriptorFichero, buffer, BUFSIZE);
+		printf("Cadena recibida: %s", buffer);
+		
+		
+		//
+		// Comprobación de errores de lectura (?)
+		//
+		
+		
+		//
+		// Si la lectura tiene datos válidos terminar el buffer con un \0
+		//
+		
+		buf[readsize] = '\0';
+		
+		//
+		// Se eliminan los caracteres de retorno de carro y nueva linea
+		//
+		
+		
+		//
+		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
+		//	(Se soporta solo GET)
+		//
+		
+		
+		//
+		//	Como se trata el caso de acceso ilegal a directorios superiores de la
+		//	jerarquia de directorios
+		//	del sistema
+		//
+		
+		
+		//
+		//	Como se trata el caso excepcional de la URL que no apunta a ningún fichero
+		//	html
+		//
+		
+		
+		//
+		//	Evaluar el tipo de fichero que se está solicitando, y actuar en
+		//	consecuencia devolviendolo si se soporta u devolviendo el error correspondiente en otro caso
+		//
+		
+		
+		//
+		//	En caso de que el fichero sea soportado, exista, etc. se envia el fichero con la cabecera
+		//	correspondiente, y el envio del fichero se hace en blockes de un máximo de  8kB
+		//
+
+	}
 	
 	close(descriptorFichero);
 	exit(1);
