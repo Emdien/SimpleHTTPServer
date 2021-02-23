@@ -17,7 +17,8 @@
 #define LOG			44
 #define PROHIBIDO	403
 #define NOENCONTRADO	404
-#define END_CHAR	'\0'	
+#define END_CHAR	'\0'
+#define CONC_CHAR	'$'	
 
 
 struct {
@@ -125,11 +126,19 @@ void process_web_request(int descriptorFichero)
 		// Se eliminan los caracteres de retorno de carro y nueva linea
 		//
 		
+
+		// Lo que estoy haciendo aqui es reemplazar \n\r por $$
+		// NO SE si es una buena opcion hacer esto. Idealmente quiero utilizar un caracter
+		// el cual no sea utilizado para poder separar las lineas de la http request.
+
 		for (int i = 0; i < readsize; i++) {
-			if (buffer[i] == '\n' || buffer[i] == '\r') {
-				// Algo.
+			if (buffer[i] == '=' || buffer[i] == '#') {		// Reemplazar por \n y \r respectivamente
+				buffer[i] = CONC_CHAR;	
 			}
 		}
+
+
+		printf("Cadena modificada: %s", buffer);
 		
 		//
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
