@@ -95,6 +95,10 @@ void process_web_request(int descriptorFichero)
 
 	if (retval) {			// Tengo que hacer loop?
 
+		// Creo un buffer --> Lo puedo mover fuera?
+		// Inicio su memoria todo a ceros, y preparo una variable
+		// para saber cuanto he leido del descriptor de fichero.
+
 		char buffer[BUFSIZE];
 		memset(buffer, 0, BUFSIZE);
 		int readsize = 0;	
@@ -106,20 +110,26 @@ void process_web_request(int descriptorFichero)
 		
 		
 		//
-		// Comprobación de errores de lectura (?)
+		// Comprobación de errores de lectura
 		//
-		
+
+		// Gonzalo: No se que hacer aqui la verdad. [23/02/2021]
 		
 		//
 		// Si la lectura tiene datos válidos terminar el buffer con un \0
 		//
 		
-		buf[readsize] = '\0';
+		buffer[readsize] = '\0';
 		
 		//
 		// Se eliminan los caracteres de retorno de carro y nueva linea
 		//
 		
+		for (int i = 0; i < readsize; i++) {
+			if (buffer[i] == '\n' || buffer[i] == '\r') {
+				// Algo.
+			}
+		}
 		
 		//
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
