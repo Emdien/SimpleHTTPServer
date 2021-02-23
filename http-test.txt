@@ -1,0 +1,42 @@
+Notas:
+
+- Para probar desde cliente a servidores externos:
+Mediante HTTPS: openssl s_client -connect www.um.es:443
+Mediante Tlent: telnet cicely.inf.um.es 80
+
+- Es importante copia la petición completa, incluyendo la línea en blanco al final.
+
+
+*************************************
+
+
+Petición:
+GET / HTTP/1.1
+Host: www.sstt.org
+
+Respuesta: 200 OK
+
+Petición:
+GOT / HTTP/1.1
+Host: www.sstt.org
+
+Respuesta: 405 Method Not Allowed
+
+
+Petición:
+GET /HTTP/1.1
+Host: www.sstt.org
+
+Respuesta: 400 Bad Request
+
+Petición:
+GET / HTTP/1.1
+Host:www.sstt.org
+
+Respuesta: 400 Bad Request
+
+Petición:
+GET ../../etc/passwd HTTP/1.1
+Host: www.sstt.org
+
+Respuesta: 400 Bad Request
