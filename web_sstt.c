@@ -78,6 +78,7 @@ void process_web_request(int descriptorFichero)
 	fd_set fdset;	// Conjunto de descriptores de ficheros.
 	struct timeval tv;
 	int retval;
+	char buffer[BUFSIZE];	// Buffer
 
 	// Queremos trabajar con el fd  "descriptorFichero"
 	// Vacio el conjunto de descriptores de fichero
@@ -94,13 +95,14 @@ void process_web_request(int descriptorFichero)
 	// Si en el readfds hay caracteres disponibles (1 = readfds = lectura)
 	// Procedo a manejar dichos caracteres disponibles
 
-	if (retval) {			// Tengo que hacer loop?
+	// Tengo que hacer un loop para que pueda seguir leyendo despues de \n\r
 
-		// Creo un buffer --> Lo puedo mover fuera?
-		// Inicio su memoria todo a ceros, y preparo una variable
+	while (retval) {
+
+		// Inicio memoria de buffer todo a ceros, y preparo una variable
 		// para saber cuanto he leido del descriptor de fichero.
 
-		char buffer[BUFSIZE];
+		
 		memset(buffer, 0, BUFSIZE);
 		int readsize = 0;	
 		//
@@ -132,7 +134,7 @@ void process_web_request(int descriptorFichero)
 		// el cual no sea utilizado para poder separar las lineas de la http request.
 
 		for (int i = 0; i < readsize; i++) {
-			if (buffer[i] == '=' || buffer[i] == '#') {		// Reemplazar por \n y \r respectivamente
+			if (buffer[i] == '\n' || buffer[i] == '\r') {		
 				buffer[i] = CONC_CHAR;	
 			}
 		}
