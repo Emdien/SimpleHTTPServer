@@ -16,6 +16,7 @@
 #define LOG			44
 #define PROHIBIDO	403
 #define NOENCONTRADO	404
+#define END_CHAR	'\0'	
 
 
 struct {
@@ -70,15 +71,18 @@ void process_web_request(int descriptorFichero)
 	//
 	// Definir buffer y variables necesarias para leer las peticiones
 	//
-	
-	
+	char buffer[BUFSIZE];
+	memset(buffer, 0, BUFSIZE);
+	int readsize = 0;	
 	//
 	// Leer la petición HTTP
 	//
+	readsize = read(descriptorFichero, buffer, BUFSIZE);
+	printf("Cadena recibida: %s", buffer);
 	
 	
 	//
-	// Comprobación de errores de lectura
+	// Comprobación de errores de lectura (?)
 	//
 	
 	
@@ -86,6 +90,7 @@ void process_web_request(int descriptorFichero)
 	// Si la lectura tiene datos válidos terminar el buffer con un \0
 	//
 	
+	buf[readsize] = '\0';
 	
 	//
 	// Se eliminan los caracteres de retorno de carro y nueva linea
