@@ -17,8 +17,9 @@
 #define LOG			44
 #define PROHIBIDO	403
 #define NOENCONTRADO	404
-#define END_CHAR	'\0'
-#define CONC_CHAR	'$'	
+#define END_CHAR	'\0'	
+#define GET_METHOD	1
+#define POST_METHOD	2
 
 
 struct {
@@ -64,7 +65,17 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO) exit(3);
 }
 
+// Función para parsear que tipo de método es la peticion HTTP recibida.
 
+int parse_method(char * metodo) {
+	if (metodo == NULL) {
+		return -2;
+	} else if (!strcmp(metodo, "GET") && !strcmp(metodo, "POST")) {
+		return -1;
+	} else if (strcmp(metodo, "POST")){
+		return POST_METHOD;
+	} else return GET_METHOD;
+}
 
 
 void process_web_request(int descriptorFichero)
@@ -76,23 +87,27 @@ void process_web_request(int descriptorFichero)
 
 	
 	fd_set fdset;	// Conjunto de descriptores de ficheros.
-	struct timeval tv;
-	int retval;
-	char buffer[BUFSIZE];	// Buffer
+	struct timeval tv;		// Timeout
+	int retval;		// Valor devuelto por select()
+	
 
 	// Queremos trabajar con el fd  "descriptorFichero"
 	// Vacio el conjunto de descriptores de fichero
 	// Añado el descriptor de fichero al conjunto
+
 	FD_ZERO(&fdset); 
 	FD_SET(descriptorFichero, &fdset);
 
 	// Espero hasta 5 segundos (Siguiendo el ejemplo de man 2 select)
+	// En mi caso, eligo 30 segundos (temporal)
+
 	tv.tv_sec = 30;
 	tv.tv_usec = 0;
 
 	retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv);
 
 	// Si en el readfds hay caracteres disponibles (1 = readfds = lectura)
+	// readfds corresponde en este caso a fdset, el cual contiene descriptorFichero
 	// Procedo a manejar dichos caracteres disponibles
 
 	// Tengo que hacer un loop para que pueda seguir leyendo despues de \n\r
@@ -102,50 +117,88 @@ void process_web_request(int descriptorFichero)
 		// Inicio memoria de buffer todo a ceros, y preparo una variable
 		// para saber cuanto he leido del descriptor de fichero.
 
-		
-		memset(buffer, 0, BUFSIZE);
-		int readsize = 0;	
+		char buffer[BUFSIZE] = {0};	// Buffer	
 		//
 		// Leer la petición HTTP
 		//
-		readsize = read(descriptorFichero, buffer, BUFSIZE);
-		printf("Cadena recibida: %s", buffer);
+		ssize_t readsize = read(descriptorFichero, buffer, BUFSIZE);
+		debug(LOG, "Cadena recibida", buffer, descriptorFichero);
 		
 		
 		//
 		// Comprobación de errores de lectura
 		//
 
-		// Gonzalo: No se que hacer aqui la verdad. [23/02/2021]
+		if (readsize < 0) {
+			debug(ERROR, "Error en la lectura", "Ha ocurrido un error al leer el buffer ", descriptorFichero);
+			close(descriptorFichero);
+		} 
 		
 		//
 		// Si la lectura tiene datos válidos terminar el buffer con un \0
 		//
 		
-		buffer[readsize] = '\0';
+		buffer[readsize] = END_CHAR;
 		
 		//
 		// Se eliminan los caracteres de retorno de carro y nueva linea
 		//
 		
+		// Y si en vez de eliminarlos, extraigo elementos utilizando \r\n como separador?
+		
+		char * request_line;	// Linea de peticion HTTP
+		char * save_ptrl;		// Usado para mantener la posicion en strtok_r() del mensaje completo.
 
-		// Lo que estoy haciendo aqui es reemplazar \n\r por $$
-		// NO SE si es una buena opcion hacer esto. Idealmente quiero utilizar un caracter
-		// el cual no sea utilizado para poder separar las lineas de la http request.
+		request_line = strtok_r(buffer, "\r\n", &save_ptrl);
 
-		for (int i = 0; i < readsize; i++) {
-			if (buffer[i] == '\n' || buffer[i] == '\r') {		
-				buffer[i] = CONC_CHAR;	
-			}
+		debug(LOG, "REQUEST\n====\n", request_line, descriptorFichero);
+
+		char * metodo;	// Método (GET/POST)
+		char * path;	// Path del objeto que se pide
+		char * protocolo;	// Protocol HTTP
+		char * save_ptr1;	// Usado para mantener la posicion en strtok_r()
+
+		metodo = strtok_r(request_line, " ", &save_ptr1);
+		path = strtok_r(NULL, " ", &save_ptr1);
+		protocolo = strtok_r(NULL, " ", &save_ptr1);
+
+		char * header_line;		// Primera linea de cabecera HTTP
+		char * host;			// Cadena correspondiente a "Host:""
+		char * server;			// Cadena correspondiente a la direccion del servidor
+		char * save_ptr2;		// Usado para mantener la posicion en strtok_r() de la primera linea de cabecera
+		
+		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
+		debug(LOG, "HEADER\n====\n", header_line, descriptorFichero);
+
+		if (header_line != NULL) {		// Compruebo si hay cabecera 
+
+			host = strtok_r(header_line, " ", &save_ptr2);
+			server = strtok_r(NULL, " ", &save_ptr2 );
+
+		} else {
+
+			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
+			close(descriptorFichero);
+
 		}
 
-
-		printf("Cadena modificada: %s", buffer);
 		
 		//
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
 		//	(Se soporta solo GET)
 		//
+
+		switch(parse_method(metodo)) {
+			case GET_METHOD:
+				debug(LOG, "GET message", "Ha llegado un GET", descriptorFichero);
+				break;
+
+			case POST_METHOD:
+				// Unimplemented.
+				break;
+		}
+
+
 		
 		
 		//
