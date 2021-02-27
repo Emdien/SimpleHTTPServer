@@ -70,9 +70,9 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 int parse_method(char * metodo) {
 	if (metodo == NULL) {
 		return -2;
-	} else if (!strcmp(metodo, "GET") && !strcmp(metodo, "POST")) {
+	} else if (strcmp(metodo, "GET") != 0 && strcmp(metodo, "POST") != 0) {
 		return -1;
-	} else if (strcmp(metodo, "POST")){
+	} else if (strcmp(metodo, "POST") == 0){
 		return POST_METHOD;
 	} else return GET_METHOD;
 }
@@ -162,6 +162,8 @@ void process_web_request(int descriptorFichero)
 		path = strtok_r(NULL, " ", &save_ptr1);
 		protocolo = strtok_r(NULL, " ", &save_ptr1);
 
+		debug(LOG, "\nMETODO", metodo, descriptorFichero);
+
 		char * header_line;		// Primera linea de cabecera HTTP
 		char * host;			// Cadena correspondiente a "Host:""
 		char * server;			// Cadena correspondiente a la direccion del servidor
@@ -175,6 +177,8 @@ void process_web_request(int descriptorFichero)
 			host = strtok_r(header_line, " ", &save_ptr2);
 			server = strtok_r(NULL, " ", &save_ptr2 );
 
+			debug(LOG, "\nSERVER", server, descriptorFichero);
+
 		} else {
 
 			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
@@ -187,8 +191,25 @@ void process_web_request(int descriptorFichero)
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
 		//	(Se soporta solo GET)
 		//
+		debug(LOG, "TEST  MSG", "TEST", descriptorFichero);
 
-		switch(parse_method(metodo)) {
+
+		int method_value = parse_method(metodo);
+		if (method_value > 0){
+			switch (method_value)
+			{
+			case GET_METHOD:
+				debug(LOG, "GET message", "Ha llegado un GET", descriptorFichero);
+				break;
+			
+			default:
+				break;
+			}
+		} else {
+			debug(ERROR, "HUH", "WHAT", descriptorFichero);
+		}
+
+		/*switch(parse_method(metodo)) {
 			case GET_METHOD:
 				debug(LOG, "GET message", "Ha llegado un GET", descriptorFichero);
 				break;
@@ -196,7 +217,7 @@ void process_web_request(int descriptorFichero)
 			case POST_METHOD:
 				// Unimplemented.
 				break;
-		}
+		}*/
 
 
 		
