@@ -58,6 +58,12 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 			// Enviar como respuesta 404 Not Found
 			(void)sprintf(logbuffer,"NOT FOUND: %s:%s",message, additional_info);
 			break;
+		case BAD_REQUEST:
+			(void)sprintf(logbuffer,"BAD REQUEST: %s:%s",message, additional_info);
+			break;
+		case NOT_IMPLEMENTED:
+			(void)sprintf(logbuffer,"NOT IMPLEMENTED: %s:%s",message, additional_info);
+			break;
 		case LOG: (void)sprintf(logbuffer," INFO: %s:%s:%d",message, additional_info, socket_fd); break;
 	}
 
@@ -66,7 +72,8 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 		(void)write(fd,"\n",1);
 		(void)close(fd);
 	}
-	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO) exit(3);
+	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO
+		|| log_message_type == BAD_REQUEST ||log_message_type == NOT_IMPLEMENTED) exit(3);
 }
 
 // Función para parsear que tipo de método es la peticion HTTP recibida.
@@ -79,6 +86,21 @@ int parse_method(char * metodo) {
 	} else if (strcmp(metodo, "POST") == 0){
 		return POST_METHOD;
 	} else return GET_METHOD;
+}
+
+
+int parse_path(char * path) {
+	if (path == NULL){
+		return -2;
+	}
+	else if (strcmp(path, "/") == 0) {	// Me esta haciendo una peticion de tipo host/
+		return 1;
+	} else {
+		for (int i = 0; i < strlen(path) -1; i++) {	// Compruebo si el path es erroneo (intenta acceder a directorios superiores)
+			if (path[i] == "." && path[i+1] == ".") return -1;
+		}
+		return 2;	// El path es correcto.
+	}
 }
 
 
@@ -189,33 +211,37 @@ void process_web_request(int descriptorFichero)
 			close(descriptorFichero);
 
 		}
-
 		
 		//
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
 		//	(Se soporta solo GET)
 		//
-		//debug(LOG, "TEST  MSG", "TEST", descriptorFichero);
 
 
 		// Dependiendo de que código me devuelva la funcion, hago algo
 		// Compruebo los casos de ERROR. Mas facil manejar
 
+		// Si no hay ningun error, continuo analizando.
+		// Nota: metodo POST todavia no implementado.
+
 		int method_code = parse_method(metodo);
-		if (method_code > 0){
-			switch (method_code)
-			{
-			case -1:
-				debug(ERROR, "Method error, code", BAD_REQUEST, descriptorFichero);
-				break;
-			
-			default:
-				break;
-			}
-		}
-
-
+		switch (method_code)
+		{
+		case -1:
+		case POST_METHOD:
+			// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
+			debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
+			break;
 		
+		case -2:
+			// Generar respuesta con codigo: BAD_REQUEST (400)
+			debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
+			break;
+		
+		default:
+			debug(LOG, "Metodo GET", metodo, descriptorFichero);
+			break;
+		}
 		
 		//
 		//	Como se trata el caso de acceso ilegal a directorios superiores de la
@@ -225,9 +251,28 @@ void process_web_request(int descriptorFichero)
 
 		// Dependiendo de que código me devuelva la funcion, hago algo
 		// Compruebo los casos de ERROR. Mas facil manejar.
-
+		
 		int path_code = parse_path(path);
+		switch (path_code)
+		{
+		case -2:
+			// Generar respuesta con codigo: BAD_REQUEST (400)
+			debug(BAD_REQUEST, "Path error", path, descriptorFichero);
+			break;
+		case -1:
+			// Generar respuesta con codigo: FORBIDDEN (403)
+			debug(PROHIBIDO, "Path error", path, descriptorFichero);
+			break;
+		
+		default:
+			debug(LOG, "Path aceptado", path, descriptorFichero);
+			break;
+		}
 
+
+		// Dependiendo del path code, se tratara de una forma u otra a continuacion
+		// path code = 1 --> host/index.html
+		// path code = 2 --> host/fichero
 		
 		
 
