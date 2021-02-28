@@ -17,6 +17,10 @@
 #define LOG			44
 #define PROHIBIDO	403
 #define NOENCONTRADO	404
+#define OK	200
+#define BAD_REQUEST	400
+#define NOT_ALLOWED	405
+#define NOT_IMPLEMENTED 501
 #define END_CHAR	'\0'	
 #define GET_METHOD	1
 #define POST_METHOD	2
@@ -151,7 +155,7 @@ void process_web_request(int descriptorFichero)
 
 		request_line = strtok_r(buffer, "\r\n", &save_ptrl);
 
-		debug(LOG, "REQUEST\n====\n", request_line, descriptorFichero);
+		//debug(LOG, "REQUEST\n====\n", request_line, descriptorFichero);
 
 		char * metodo;	// Método (GET/POST)
 		char * path;	// Path del objeto que se pide
@@ -162,7 +166,7 @@ void process_web_request(int descriptorFichero)
 		path = strtok_r(NULL, " ", &save_ptr1);
 		protocolo = strtok_r(NULL, " ", &save_ptr1);
 
-		debug(LOG, "\nMETODO", metodo, descriptorFichero);
+		//debug(LOG, "\nMETODO", metodo, descriptorFichero);
 
 		char * header_line;		// Primera linea de cabecera HTTP
 		char * host;			// Cadena correspondiente a "Host:""
@@ -170,14 +174,14 @@ void process_web_request(int descriptorFichero)
 		char * save_ptr2;		// Usado para mantener la posicion en strtok_r() de la primera linea de cabecera
 		
 		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
-		debug(LOG, "HEADER\n====\n", header_line, descriptorFichero);
+		//debug(LOG, "HEADER\n====\n", header_line, descriptorFichero);
 
 		if (header_line != NULL) {		// Compruebo si hay cabecera 
 
 			host = strtok_r(header_line, " ", &save_ptr2);
 			server = strtok_r(NULL, " ", &save_ptr2 );
 
-			debug(LOG, "\nSERVER", server, descriptorFichero);
+			//debug(LOG, "\nSERVER", server, descriptorFichero);
 
 		} else {
 
@@ -191,33 +195,24 @@ void process_web_request(int descriptorFichero)
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
 		//	(Se soporta solo GET)
 		//
-		debug(LOG, "TEST  MSG", "TEST", descriptorFichero);
+		//debug(LOG, "TEST  MSG", "TEST", descriptorFichero);
 
 
-		int method_value = parse_method(metodo);
-		if (method_value > 0){
-			switch (method_value)
+		// Dependiendo de que código me devuelva la funcion, hago algo
+		// Compruebo los casos de ERROR. Mas facil manejar
+
+		int method_code = parse_method(metodo);
+		if (method_code > 0){
+			switch (method_code)
 			{
-			case GET_METHOD:
-				debug(LOG, "GET message", "Ha llegado un GET", descriptorFichero);
+			case -1:
+				debug(ERROR, "Method error, code", BAD_REQUEST, descriptorFichero);
 				break;
 			
 			default:
 				break;
 			}
-		} else {
-			debug(ERROR, "HUH", "WHAT", descriptorFichero);
 		}
-
-		/*switch(parse_method(metodo)) {
-			case GET_METHOD:
-				debug(LOG, "GET message", "Ha llegado un GET", descriptorFichero);
-				break;
-
-			case POST_METHOD:
-				// Unimplemented.
-				break;
-		}*/
 
 
 		
@@ -227,12 +222,23 @@ void process_web_request(int descriptorFichero)
 		//	jerarquia de directorios
 		//	del sistema
 		//
+
+		// Dependiendo de que código me devuelva la funcion, hago algo
+		// Compruebo los casos de ERROR. Mas facil manejar.
+
+		int path_code = parse_path(path);
+
+		
+		
+
 		
 		
 		//
 		//	Como se trata el caso excepcional de la URL que no apunta a ningún fichero
 		//	html
 		//
+
+		
 		
 		
 		//
