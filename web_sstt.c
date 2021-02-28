@@ -10,16 +10,18 @@
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <linux/limits.h>
 
 #define VERSION		24
 #define BUFSIZE		8096
 #define ERROR		42
 #define LOG			44
+#define OK	200
 #define PROHIBIDO	403
 #define NOENCONTRADO	404
-#define OK	200
 #define BAD_REQUEST	400
 #define NOT_ALLOWED	405
+#define UNSUPPORTED_MEDIA 415
 #define NOT_IMPLEMENTED 501
 #define END_CHAR	'\0'	
 #define GET_METHOD	1
@@ -64,6 +66,9 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 		case NOT_IMPLEMENTED:
 			(void)sprintf(logbuffer,"NOT IMPLEMENTED: %s:%s",message, additional_info);
 			break;
+		case UNSUPPORTED_MEDIA:
+			(void)sprintf(logbuffer,"UNSUPPORTED MEDIA: %s:%s",message, additional_info);
+			break;
 		case LOG: (void)sprintf(logbuffer," INFO: %s:%s:%d",message, additional_info, socket_fd); break;
 	}
 
@@ -97,12 +102,26 @@ int parse_path(char * path) {
 		return 1;
 	} else {
 		for (int i = 0; i < strlen(path) -1; i++) {	// Compruebo si el path es erroneo (intenta acceder a directorios superiores)
-			if (path[i] == "." && path[i+1] == ".") return -1;
+			if (path[i] == '.' && path[i+1] == '.') return -1;
 		}
 		return 2;	// El path es correcto.
 	}
 }
 
+int parse_extension(char * path) {
+	char * ext = strchr(path + 1, '.');		// +1 ?
+	debug(LOG, "Extension", ext, 4);
+	if (ext == NULL) {		// Fichero sin extension
+		return -2;
+	} else {		// Comprobamos si es una extension aceptada (struct extensions)
+		for (int i = 0; extensions[i].ext != 0; i++){
+			if (strcmp(ext, extensions[i].ext) == 0){
+				return i;	// Devuelvo el indice de la extension correspondiente
+			}
+		}
+		return -1;		// Extension no aceptada
+	}
+}
 
 void process_web_request(int descriptorFichero)
 {
@@ -177,8 +196,6 @@ void process_web_request(int descriptorFichero)
 
 		request_line = strtok_r(buffer, "\r\n", &save_ptrl);
 
-		//debug(LOG, "REQUEST\n====\n", request_line, descriptorFichero);
-
 		char * metodo;	// Método (GET/POST)
 		char * path;	// Path del objeto que se pide
 		char * protocolo;	// Protocol HTTP
@@ -188,22 +205,16 @@ void process_web_request(int descriptorFichero)
 		path = strtok_r(NULL, " ", &save_ptr1);
 		protocolo = strtok_r(NULL, " ", &save_ptr1);
 
-		//debug(LOG, "\nMETODO", metodo, descriptorFichero);
-
 		char * header_line;		// Primera linea de cabecera HTTP
 		char * host;			// Cadena correspondiente a "Host:""
 		char * server;			// Cadena correspondiente a la direccion del servidor
 		char * save_ptr2;		// Usado para mantener la posicion en strtok_r() de la primera linea de cabecera
-		
 		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
-		//debug(LOG, "HEADER\n====\n", header_line, descriptorFichero);
 
 		if (header_line != NULL) {		// Compruebo si hay cabecera 
 
 			host = strtok_r(header_line, " ", &save_ptr2);
 			server = strtok_r(NULL, " ", &save_ptr2 );
-
-			//debug(LOG, "\nSERVER", server, descriptorFichero);
 
 		} else {
 
@@ -227,20 +238,20 @@ void process_web_request(int descriptorFichero)
 		int method_code = parse_method(metodo);
 		switch (method_code)
 		{
-		case -1:
-		case POST_METHOD:
-			// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
-			debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
-			break;
-		
-		case -2:
-			// Generar respuesta con codigo: BAD_REQUEST (400)
-			debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
-			break;
-		
-		default:
-			debug(LOG, "Metodo GET", metodo, descriptorFichero);
-			break;
+			case -1:
+			case POST_METHOD:
+				// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
+				debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
+				break;
+			
+			case -2:
+				// Generar respuesta con codigo: BAD_REQUEST (400)
+				debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
+				break;
+			
+			default:
+				debug(LOG, "Metodo GET", metodo, descriptorFichero);
+				break;
 		}
 		
 		//
@@ -255,18 +266,18 @@ void process_web_request(int descriptorFichero)
 		int path_code = parse_path(path);
 		switch (path_code)
 		{
-		case -2:
-			// Generar respuesta con codigo: BAD_REQUEST (400)
-			debug(BAD_REQUEST, "Path error", path, descriptorFichero);
-			break;
-		case -1:
-			// Generar respuesta con codigo: FORBIDDEN (403)
-			debug(PROHIBIDO, "Path error", path, descriptorFichero);
-			break;
-		
-		default:
-			debug(LOG, "Path aceptado", path, descriptorFichero);
-			break;
+			case -2:
+				// Generar respuesta con codigo: BAD_REQUEST (400)
+				debug(BAD_REQUEST, "Path error", path, descriptorFichero);
+				break;
+			case -1:
+				// Generar respuesta con codigo: FORBIDDEN (403)
+				debug(PROHIBIDO, "Path error", path, descriptorFichero);
+				break;
+			
+			default:
+				debug(LOG, "Path aceptado", path, descriptorFichero);
+				break;
 		}
 
 
@@ -274,7 +285,58 @@ void process_web_request(int descriptorFichero)
 		// path code = 1 --> host/index.html
 		// path code = 2 --> host/fichero
 		
-		
+		char filepath[PATH_MAX] = {0};
+		int nExtension;
+
+		// Caso peticion tipo "/"
+
+		if (path_code == 1) {
+			strcat(filepath, "index.html");
+
+			int file = open(filepath, O_RDONLY);
+
+			if (file != -1) {
+				// Generar respuesta con codigo: OK (200)
+				debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
+			} else {
+				// Generar respuesta con codigo: NOT_FOUND (404)
+				debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
+			}
+
+		}
+		else {	// Otro caso
+
+			// Tengo que comprobar la extension
+			nExtension = parse_extension(path);
+			switch (nExtension)
+			{
+			case -2:
+				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
+				debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
+				break;
+			case -1:
+				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
+				debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
+				break;
+			default:
+				break;
+			}
+
+			strcpy(filepath, path + 1);
+
+			int file = open(filepath, O_RDONLY);
+
+			if (file != -1) {
+				// Generar respuesta con codigo: OK (200)
+				debug(LOG, "Generado respuesta", filepath, descriptorFichero);
+			} else {
+				// Generar respuesta con codigo: NOT_FOUND (404)
+				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
+			}
+
+		}
+
+
 
 		
 		
