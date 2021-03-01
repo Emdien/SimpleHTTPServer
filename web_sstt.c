@@ -78,7 +78,8 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 		(void)close(fd);
 	}
 	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO
-		|| log_message_type == BAD_REQUEST ||log_message_type == NOT_IMPLEMENTED) exit(3);
+		|| log_message_type == BAD_REQUEST || log_message_type == NOT_IMPLEMENTED 
+		|| log_message_type == UNSUPPORTED_MEDIA) exit(3);
 }
 
 // Función para parsear que tipo de método es la peticion HTTP recibida.
@@ -121,6 +122,112 @@ int parse_extension(char * path) {
 		}
 		return -1;		// Extension no aceptada
 	}
+}
+
+void respuesta(int fd, int file, int codigo, int nExtension) {
+
+	char respuesta[BUFSIZE] = {0};
+
+	// Linea de estado
+
+	strcat(respuesta, "HTTP/1.1 ");
+
+	switch (codigo)
+	{
+	case OK:
+		strcat(respuesta, "200 OK\r\n");
+		break;
+	case PROHIBIDO:
+		strcat(respuesta, "403 FORBIDDEN\r\n");
+		break;
+	case OK:
+		strcat(respuesta, "404 NOT FOUND\r\n");
+		break;
+	case OK:
+		strcat(respuesta, "405 NOT ALLOWED\r\n");
+		break;
+	case OK:
+		strcat(respuesta, "415 UNSUPPORTED MEDIA\r\n");
+		break;
+	case OK:
+		strcat(respuesta, "501 NOT IMPLEMENTED\r\n");
+		break;
+	}
+
+	//
+	// CABECERA
+	//
+
+	//	Linea Date
+
+	struct tm *gmtime;
+	time_t now;
+	time(&now);
+	gmtime = gmtime(&now);
+
+	strcat(respuesta, "Date: ");
+
+	char aux[256] = {0};
+
+	strftime(aux, sizeof aux, "%a, %d %b %Y %H:%M:%S %Z", &gmtime);
+	strcat(respuesta, aux);
+	strcat(respuesta, "\r\n");
+
+	//	Linea Server
+	strcat(respuesta, "Server: sstt2021\r\n");
+
+	//	Last modified - ETag - Accept-Ranges (?)
+
+	//	Linea Content-Length
+	struct stat filestat;
+	
+	if (file != -1) {	// Se ha podido abrir un fichero
+		fstat(file, &filestat);
+		memset(aux, 0);	
+		sprintf(aux, "Content-Length: %ld\r\n", filestat.st_size);
+		strcat(respuesta, aux);
+	} else {	// No se ha podido abrir un fichero
+		strcat(respuesta, "Content-Length: 0\r\n");
+	}
+
+	//	Linea Keep-Alive
+	strcat(respuesta, "Keep-Alive: timeout=10, max=100\r\n");
+	strcat(respuesta, "Connection: Keep-Alive\r\n");
+
+	//	Linea Content-Type
+	if (nExtension < 0) {
+		strcat(respuesta, "Content-Type: \r\n");	
+	} else {
+		strcat(respuesta, "Content-Type: ");
+		strcat(respuesta, extensions[nExtension].filetype);
+		strcat(respuesta, "; charset=ISO-8859-1\r\n");
+	}
+
+	strcat(respuesta, "\r\n");
+
+	write(fd, respuesta, strlen(respuesta));
+
+	//
+	//	CONTENIDO SOLICITADO - DATOS
+	//
+
+	// Si hay fichero abierto, empiezo a escribir.
+
+	if (file != -1) {
+		char buffer[BUFSIZE];	// Buffer de 8k
+		memset(buffer, 0);		// Preparo el buffer
+
+		ssize_t readsize;
+		while(readsize = read(file, buffer, BUFSIZE)) {
+			write(fd, buffer, BUFSIZE);
+		}
+
+
+	}
+
+
+
+
 }
 
 void process_web_request(int descriptorFichero)
@@ -217,7 +324,7 @@ void process_web_request(int descriptorFichero)
 			server = strtok_r(NULL, " ", &save_ptr2 );
 
 		} else {
-
+			// Generar respuesta?
 			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
 			close(descriptorFichero);
 
@@ -241,11 +348,13 @@ void process_web_request(int descriptorFichero)
 			case -1:
 			case POST_METHOD:
 				// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
+				respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, -1);
 				debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
 				break;
 			
 			case -2:
 				// Generar respuesta con codigo: BAD_REQUEST (400)
+				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
 				debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
 				break;
 			
@@ -268,10 +377,12 @@ void process_web_request(int descriptorFichero)
 		{
 			case -2:
 				// Generar respuesta con codigo: BAD_REQUEST (400)
+				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
 				debug(BAD_REQUEST, "Path error", path, descriptorFichero);
 				break;
 			case -1:
 				// Generar respuesta con codigo: FORBIDDEN (403)
+				respuesta(descriptorFichero, -1, PROHIBIDO, -1);
 				debug(PROHIBIDO, "Path error", path, descriptorFichero);
 				break;
 			
@@ -297,9 +408,11 @@ void process_web_request(int descriptorFichero)
 
 			if (file != -1) {
 				// Generar respuesta con codigo: OK (200)
+				respuesta(descriptorFichero, file, OK, 9);	// ext 9 = text/html
 				debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
 			} else {
 				// Generar respuesta con codigo: NOT_FOUND (404)
+				respuesta(descriptorFichero, -1, NOENCONTRADO, -1);
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
 			}
 
@@ -312,10 +425,12 @@ void process_web_request(int descriptorFichero)
 			{
 			case -2:
 				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
+				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
 				debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
 				break;
 			case -1:
 				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
+				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
 				debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
 				break;
 			default:
@@ -328,9 +443,11 @@ void process_web_request(int descriptorFichero)
 
 			if (file != -1) {
 				// Generar respuesta con codigo: OK (200)
+				respuesta(descriptorFichero, file, NOT_IMPLEMENTED, nExtension);
 				debug(LOG, "Generado respuesta", filepath, descriptorFichero);
 			} else {
 				// Generar respuesta con codigo: NOT_FOUND (404)
+				respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, nExtension);
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
 			}
 
