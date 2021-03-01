@@ -4,13 +4,16 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <time.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <linux/limits.h>
+
 
 #define VERSION		24
 #define BUFSIZE		8096
@@ -46,6 +49,8 @@ struct {
 
 void debug(int log_message_type, char *message, char *additional_info, int socket_fd)
 {
+	//(void)printf("Entra al debug");
+	//(void)printf("ARGS: %d, %s, %s, %d", log_message_type, message, additional_info, socket_fd);
 	int fd ;
 	char logbuffer[BUFSIZE*2];
 	
@@ -72,11 +77,16 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 		case LOG: (void)sprintf(logbuffer," INFO: %s:%s:%d",message, additional_info, socket_fd); break;
 	}
 
+
+
 	if((fd = open("webserver.log", O_CREAT| O_WRONLY | O_APPEND,0644)) >= 0) {
 		(void)write(fd,logbuffer,strlen(logbuffer));
 		(void)write(fd,"\n",1);
 		(void)close(fd);
+		//(void)printf("Abre el webserver.log");
 	}
+
+
 	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO
 		|| log_message_type == BAD_REQUEST || log_message_type == NOT_IMPLEMENTED 
 		|| log_message_type == UNSUPPORTED_MEDIA) exit(3);
@@ -110,13 +120,14 @@ int parse_path(char * path) {
 }
 
 int parse_extension(char * path) {
-	char * ext = strchr(path + 1, '.');		// +1 ?
+	char * ext = strchr(path, '.');		// +1 ?
+	printf("\nExtension: %s\n", ext);
 	debug(LOG, "Extension", ext, 4);
 	if (ext == NULL) {		// Fichero sin extension
 		return -2;
 	} else {		// Comprobamos si es una extension aceptada (struct extensions)
 		for (int i = 0; extensions[i].ext != 0; i++){
-			if (strcmp(ext, extensions[i].ext) == 0){
+			if (strcmp(ext+1, extensions[i].ext) == 0){
 				return i;	// Devuelvo el indice de la extension correspondiente
 			}
 		}
@@ -140,16 +151,16 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 	case PROHIBIDO:
 		strcat(respuesta, "403 FORBIDDEN\r\n");
 		break;
-	case OK:
+	case NOENCONTRADO:
 		strcat(respuesta, "404 NOT FOUND\r\n");
 		break;
-	case OK:
+	case NOT_ALLOWED:
 		strcat(respuesta, "405 NOT ALLOWED\r\n");
 		break;
-	case OK:
+	case UNSUPPORTED_MEDIA:
 		strcat(respuesta, "415 UNSUPPORTED MEDIA\r\n");
 		break;
-	case OK:
+	case NOT_IMPLEMENTED:
 		strcat(respuesta, "501 NOT IMPLEMENTED\r\n");
 		break;
 	}
@@ -160,16 +171,16 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 
 	//	Linea Date
 
-	struct tm *gmtime;
+	struct tm gtime;
 	time_t now;
 	time(&now);
-	gmtime = gmtime(&now);
+	gtime = *gmtime(&now);
 
 	strcat(respuesta, "Date: ");
 
 	char aux[256] = {0};
 
-	strftime(aux, sizeof aux, "%a, %d %b %Y %H:%M:%S %Z", &gmtime);
+	strftime(aux, sizeof aux, "%a, %d %b %Y %H:%M:%S %Z", &gtime);
 	strcat(respuesta, aux);
 	strcat(respuesta, "\r\n");
 
@@ -183,7 +194,7 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 	
 	if (file != -1) {	// Se ha podido abrir un fichero
 		fstat(file, &filestat);
-		memset(aux, 0);	
+		memset(aux, 0, sizeof aux);	
 		sprintf(aux, "Content-Length: %ld\r\n", filestat.st_size);
 		strcat(respuesta, aux);
 	} else {	// No se ha podido abrir un fichero
@@ -215,7 +226,7 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 
 	if (file != -1) {
 		char buffer[BUFSIZE];	// Buffer de 8k
-		memset(buffer, 0);		// Preparo el buffer
+		memset(buffer, 0, sizeof buffer);		// Preparo el buffer
 
 		ssize_t readsize;
 		while(readsize = read(file, buffer, BUFSIZE)) {
@@ -447,7 +458,7 @@ void process_web_request(int descriptorFichero)
 				debug(LOG, "Generado respuesta", filepath, descriptorFichero);
 			} else {
 				// Generar respuesta con codigo: NOT_FOUND (404)
-				respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, nExtension);
+				respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension);
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
 			}
 
@@ -510,8 +521,12 @@ int main(int argc, char **argv)
 		exit(4);
 	}
 	// Hacemos que el proceso sea un demonio sin hijos zombies
-	if(fork() != 0)
+	if(fork() != 0){
+		//(void)printf("Entra al fork");
 		return 0; // El proceso padre devuelve un OK al shell
+	}
+	
+	//(void)printf("No Entra al fork");
 
 	(void)signal(SIGCHLD, SIG_IGN); // Ignoramos a los hijos
 	(void)signal(SIGHUP, SIG_IGN); // Ignoramos cuelgues
