@@ -275,7 +275,7 @@ void process_web_request(int descriptorFichero)
 
 	// Tengo que hacer un loop para que pueda seguir leyendo despues de \n\r
 
-	while (retval) {
+	while (retval > 0) {
 
 		// Inicio memoria de buffer todo a ceros, y preparo una variable
 		// para saber cuanto he leido del descriptor de fichero.
@@ -317,29 +317,36 @@ void process_web_request(int descriptorFichero)
 		char * metodo;	// Método (GET/POST)
 		char * path;	// Path del objeto que se pide
 		char * protocolo;	// Protocol HTTP
-		char * save_ptr1;	// Usado para mantener la posicion en strtok_r()
 
-		metodo = strtok_r(request_line, " ", &save_ptr1);
-		path = strtok_r(NULL, " ", &save_ptr1);
-		protocolo = strtok_r(NULL, " ", &save_ptr1);
+		metodo = strtok(request_line, " ");
+		path = strtok(NULL, " ");
+		protocolo = strtok(NULL, "");
 
 		char * header_line;		// Primera linea de cabecera HTTP
 		char * host;			// Cadena correspondiente a "Host:""
 		char * server;			// Cadena correspondiente a la direccion del servidor
-		char * save_ptr2;		// Usado para mantener la posicion en strtok_r() de la primera linea de cabecera
 		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
 
 		if (header_line != NULL) {		// Compruebo si hay cabecera 
 
-			host = strtok_r(header_line, " ", &save_ptr2);
-			server = strtok_r(NULL, " ", &save_ptr2 );
+			host = strtok(header_line, " ");
+			server = strtok(NULL, "");
+
+			if (host == NULL || server == NULL) {
+				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+				debug(ERROR, "Header error", "Cabecera mal formada", descriptorFichero);
+			}
 
 		} else {
 			// Generar respuesta?
+			respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
 			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
-			close(descriptorFichero);
+			close(descriptorFichero);	// ?
 
 		}
+
+
+
 		
 		//
 		//	TRATAR LOS CASOS DE LOS DIFERENTES METODOS QUE SE USAN
@@ -426,6 +433,7 @@ void process_web_request(int descriptorFichero)
 				respuesta(descriptorFichero, -1, NOENCONTRADO, -1);
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
 			}
+			close(file);
 
 		}
 		else {	// Otro caso
@@ -448,7 +456,13 @@ void process_web_request(int descriptorFichero)
 				break;
 			}
 
+			
+
 			strcpy(filepath, path + 1);
+
+			//  |	Salta "/" inicial del path
+			//  v
+			// /path/......
 
 			int file = open(filepath, O_RDONLY);
 
@@ -461,7 +475,7 @@ void process_web_request(int descriptorFichero)
 				respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension);
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
 			}
-
+			close(file);
 		}
 
 
