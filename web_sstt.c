@@ -33,6 +33,7 @@
 #define CLOSE 11
 #define STATUS_OK 55
 #define STATUS_ERROR 56
+#define EMAIL "gonzalo.nicolasm%40um.es"
 
 
 struct {
@@ -395,7 +396,6 @@ void process_web_request(int descriptorFichero)
 			switch (method_code)
 			{
 				case -1:
-				case POST_METHOD:
 					// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
 					respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, -1);
 					status = STATUS_ERROR;
@@ -459,66 +459,97 @@ void process_web_request(int descriptorFichero)
 
 		// Caso peticion tipo "/"
 
-		if (path_code == 1 && status == STATUS_OK) {
-			strcat(filepath, "index.html");
+		if (strcmp(metodo, "GET") == 0) {
+			if (path_code == 1 && status == STATUS_OK) {
+				strcat(filepath, "index.html");
 
-			int file = open(filepath, O_RDONLY);
+				int file = open(filepath, O_RDONLY);
 
-			if (file != -1) {
-				// Generar respuesta con codigo: OK (200)
-				respuesta(descriptorFichero, file, OK, 9);	// ext 9 = text/html
-				//debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
-			} else {
-				// Generar respuesta con codigo: NOT_FOUND (404)
-				respuesta(descriptorFichero, -1, NOENCONTRADO, -1);
-				status = STATUS_ERROR;
-				debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
+				if (file != -1) {
+					// Generar respuesta con codigo: OK (200)
+					respuesta(descriptorFichero, file, OK, 9);	// ext 9 = text/html
+					//debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
+				} else {
+					// Generar respuesta con codigo: NOT_FOUND (404)
+					respuesta(descriptorFichero, -1, NOENCONTRADO, -1);
+					status = STATUS_ERROR;
+					debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
+				}
+				close(file);
+
 			}
-			close(file);
+			else if (path_code > 1 && status == STATUS_OK) {	// Otro caso
+
+				// Tengo que comprobar la extension
+				nExtension = parse_extension(path);
+				switch (nExtension)
+				{
+				case -2:
+					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
+					respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
+					status = STATUS_ERROR;
+					debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
+					break;
+				case -1:
+					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
+					respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
+					status = STATUS_ERROR;
+					debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
+					break;
+				default:
+					break;
+				}
+
+				strcpy(filepath, path + 1);
+
+				//  |	Salta "/" inicial del path
+				//  v
+				// /path/......
+
+				int file = open(filepath, O_RDONLY);
+
+				if (file != -1 && status == STATUS_OK) {
+					// Generar respuesta con codigo: OK (200)
+					respuesta(descriptorFichero, file, NOT_IMPLEMENTED, nExtension);
+					//debug(LOG, "Generado respuesta", filepath, descriptorFichero);
+				} else if (file < 0 && status == STATUS_OK){
+					// Generar respuesta con codigo: NOT_FOUND (404)
+					respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension);
+					status = STATUS_ERROR;
+					debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
+				}
+				close(file);
+			}
+		} else if (strcmp(metodo, "POST") == 0) {
+			char * email;
+			char * content_line;
+			int found_email = 0;
+
+			while(!found_email && (content_line = strtok_r(NULL, "\r\n", &save_ptrl)) != NULL) {
+				email = strtok(content_line, "=");
+				if (strcmp(email, "email") == 0) {
+					email = strtok(NULL, "\n\r");
+					found_email = 1;
+					if (email == NULL) {
+						respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+						status = STATUS_ERROR;
+						debug(BAD_REQUEST, "No se ha enviado una direccion email", email, descriptorFichero);
+					}
+				}
+			}
+
+
+			if (status == STATUS_OK && email != NULL) {
+				if (strcmp(email, EMAIL) == 0) {
+					debug(LOG, "Email correcto recibido", email, descriptorFichero);
+				} else {
+					debug(LOG, "Email erroneo recibido", email, descriptorFichero);
+				}
+			}
 
 		}
-		else if (path_code > 1 && status == STATUS_OK) {	// Otro caso
 
-			// Tengo que comprobar la extension
-			nExtension = parse_extension(path);
-			switch (nExtension)
-			{
-			case -2:
-				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
-				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
-				status = STATUS_ERROR;
-				debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
-				break;
-			case -1:
-				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
-				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
-				status = STATUS_ERROR;
-				debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
-				break;
-			default:
-				break;
-			}
 
-			strcpy(filepath, path + 1);
-
-			//  |	Salta "/" inicial del path
-			//  v
-			// /path/......
-
-			int file = open(filepath, O_RDONLY);
-
-			if (file != -1 && status == STATUS_OK) {
-				// Generar respuesta con codigo: OK (200)
-				respuesta(descriptorFichero, file, NOT_IMPLEMENTED, nExtension);
-				//debug(LOG, "Generado respuesta", filepath, descriptorFichero);
-			} else if (file < 0 && status == STATUS_OK){
-				// Generar respuesta con codigo: NOT_FOUND (404)
-				respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension);
-				status = STATUS_ERROR;
-				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
-			}
-			close(file);
-		}
 
 
 		//
