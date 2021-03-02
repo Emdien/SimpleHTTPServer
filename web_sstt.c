@@ -29,6 +29,10 @@
 #define END_CHAR	'\0'	
 #define GET_METHOD	1
 #define POST_METHOD	2
+#define ALIVE 10
+#define CLOSE 11
+#define STATUS_OK 55
+#define STATUS_ERROR 56
 
 
 struct {
@@ -87,9 +91,9 @@ void debug(int log_message_type, char *message, char *additional_info, int socke
 	}
 
 
-	if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO
+	/*if(log_message_type == ERROR || log_message_type == NOENCONTRADO || log_message_type == PROHIBIDO
 		|| log_message_type == BAD_REQUEST || log_message_type == NOT_IMPLEMENTED 
-		|| log_message_type == UNSUPPORTED_MEDIA) exit(3);
+		|| log_message_type == UNSUPPORTED_MEDIA) exit(3);*/
 }
 
 // Función para parsear que tipo de método es la peticion HTTP recibida.
@@ -163,6 +167,9 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 	case NOT_IMPLEMENTED:
 		strcat(respuesta, "501 NOT IMPLEMENTED\r\n");
 		break;
+	case BAD_REQUEST:
+		strcat(respuesta, "400 BAD REQUEST\r\n");
+		break;
 	}
 
 	//
@@ -202,7 +209,7 @@ void respuesta(int fd, int file, int codigo, int nExtension) {
 	}
 
 	//	Linea Keep-Alive
-	strcat(respuesta, "Keep-Alive: timeout=10, max=100\r\n");
+	strcat(respuesta, "Keep-Alive: timeout=10, max=0\r\n");
 	strcat(respuesta, "Connection: Keep-Alive\r\n");
 
 	//	Linea Content-Type
@@ -252,6 +259,8 @@ void process_web_request(int descriptorFichero)
 	fd_set fdset;	// Conjunto de descriptores de ficheros.
 	struct timeval tv;		// Timeout
 	int retval;		// Valor devuelto por select()
+	int persistencia = ALIVE;	// Variable de persistencia. Por defecto, se mantiene la conexion abierta
+	int status = STATUS_OK;		// Variable de estado. Sirve para indicar si se ha producido un error y no mandar multiples respuestas.
 	
 
 	// Queremos trabajar con el fd  "descriptorFichero"
@@ -262,9 +271,8 @@ void process_web_request(int descriptorFichero)
 	FD_SET(descriptorFichero, &fdset);
 
 	// Espero hasta 5 segundos (Siguiendo el ejemplo de man 2 select)
-	// En mi caso, eligo 30 segundos (temporal)
 
-	tv.tv_sec = 30;
+	tv.tv_sec = 5;
 	tv.tv_usec = 0;
 
 	retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv);
@@ -275,7 +283,7 @@ void process_web_request(int descriptorFichero)
 
 	// Tengo que hacer un loop para que pueda seguir leyendo despues de \n\r
 
-	while (retval > 0) {
+	while (retval) {
 
 		// Inicio memoria de buffer todo a ceros, y preparo una variable
 		// para saber cuanto he leido del descriptor de fichero.
@@ -334,17 +342,39 @@ void process_web_request(int descriptorFichero)
 
 			if (host == NULL || server == NULL) {
 				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+				status = STATUS_ERROR;
 				debug(ERROR, "Header error", "Cabecera mal formada", descriptorFichero);
 			}
 
 		} else {
 			// Generar respuesta?
 			respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+			status = STATUS_ERROR;
 			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
-			close(descriptorFichero);	// ?
+			//close(descriptorFichero);	// ?
 
 		}
 
+		char * connection;
+		char * connection_type;
+		int found_connection = 0;
+
+		while(!found_connection && (header_line = strtok_r(NULL, "\r\n", &save_ptrl)) != NULL) {
+			connection = strtok(header_line, " ");
+
+			if (strcmp(connection, "Connection:") == 0) {
+				connection_type = strtok(NULL, "");
+				if (strcmp(connection_type, "close") == 0) {
+					persistencia = CLOSE;
+				}
+				else if (strcmp(connection_type, "keep-alive") == 0){
+					persistencia = ALIVE;
+				} 
+
+				//debug(LOG, connection, connection_type, descriptorFichero);
+				found_connection = 1;
+			}
+		}
 
 
 		
@@ -361,25 +391,30 @@ void process_web_request(int descriptorFichero)
 		// Nota: metodo POST todavia no implementado.
 
 		int method_code = parse_method(metodo);
-		switch (method_code)
-		{
-			case -1:
-			case POST_METHOD:
-				// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
-				respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, -1);
-				debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
-				break;
-			
-			case -2:
-				// Generar respuesta con codigo: BAD_REQUEST (400)
-				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
-				debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
-				break;
-			
-			default:
-				debug(LOG, "Metodo GET", metodo, descriptorFichero);
-				break;
+		if(status == STATUS_OK){
+			switch (method_code)
+			{
+				case -1:
+				case POST_METHOD:
+					// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
+					respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, -1);
+					status = STATUS_ERROR;
+					debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
+					break;
+				
+				case -2:
+					// Generar respuesta con codigo: BAD_REQUEST (400)
+					respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+					status = STATUS_ERROR;
+					debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
+					break;
+				
+				default:
+					//debug(LOG, "Metodo GET", metodo, descriptorFichero);
+					break;
+			}
 		}
+
 		
 		//
 		//	Como se trata el caso de acceso ilegal a directorios superiores de la
@@ -391,22 +426,27 @@ void process_web_request(int descriptorFichero)
 		// Compruebo los casos de ERROR. Mas facil manejar.
 		
 		int path_code = parse_path(path);
-		switch (path_code)
-		{
-			case -2:
-				// Generar respuesta con codigo: BAD_REQUEST (400)
-				respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
-				debug(BAD_REQUEST, "Path error", path, descriptorFichero);
-				break;
-			case -1:
-				// Generar respuesta con codigo: FORBIDDEN (403)
-				respuesta(descriptorFichero, -1, PROHIBIDO, -1);
-				debug(PROHIBIDO, "Path error", path, descriptorFichero);
-				break;
-			
-			default:
-				debug(LOG, "Path aceptado", path, descriptorFichero);
-				break;
+		if(status == STATUS_OK) {
+			switch (path_code)
+			{
+				case -2:
+					// Generar respuesta con codigo: BAD_REQUEST (400)
+					respuesta(descriptorFichero, -1, BAD_REQUEST, -1);
+					status = STATUS_ERROR;
+					debug(BAD_REQUEST, "Path error", path, descriptorFichero);
+					break;
+				case -1:
+					// Generar respuesta con codigo: FORBIDDEN (403)
+					respuesta(descriptorFichero, -1, PROHIBIDO, -1);
+					status = STATUS_ERROR;
+					debug(PROHIBIDO, "Path error", path, descriptorFichero);
+					break;
+				
+				default:
+					//debug(LOG, "Path aceptado", path, descriptorFichero);
+					break;
+			}
+
 		}
 
 
@@ -419,7 +459,7 @@ void process_web_request(int descriptorFichero)
 
 		// Caso peticion tipo "/"
 
-		if (path_code == 1) {
+		if (path_code == 1 && status == STATUS_OK) {
 			strcat(filepath, "index.html");
 
 			int file = open(filepath, O_RDONLY);
@@ -427,16 +467,17 @@ void process_web_request(int descriptorFichero)
 			if (file != -1) {
 				// Generar respuesta con codigo: OK (200)
 				respuesta(descriptorFichero, file, OK, 9);	// ext 9 = text/html
-				debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
+				//debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
 			} else {
 				// Generar respuesta con codigo: NOT_FOUND (404)
 				respuesta(descriptorFichero, -1, NOENCONTRADO, -1);
+				status = STATUS_ERROR;
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
 			}
 			close(file);
 
 		}
-		else {	// Otro caso
+		else if (path_code > 1 && status == STATUS_OK) {	// Otro caso
 
 			// Tengo que comprobar la extension
 			nExtension = parse_extension(path);
@@ -445,18 +486,18 @@ void process_web_request(int descriptorFichero)
 			case -2:
 				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
 				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
+				status = STATUS_ERROR;
 				debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
 				break;
 			case -1:
 				// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
 				respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1);
+				status = STATUS_ERROR;
 				debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
 				break;
 			default:
 				break;
 			}
-
-			
 
 			strcpy(filepath, path + 1);
 
@@ -466,19 +507,37 @@ void process_web_request(int descriptorFichero)
 
 			int file = open(filepath, O_RDONLY);
 
-			if (file != -1) {
+			if (file != -1 && status == STATUS_OK) {
 				// Generar respuesta con codigo: OK (200)
 				respuesta(descriptorFichero, file, NOT_IMPLEMENTED, nExtension);
-				debug(LOG, "Generado respuesta", filepath, descriptorFichero);
-			} else {
+				//debug(LOG, "Generado respuesta", filepath, descriptorFichero);
+			} else if (file < 0 && status == STATUS_OK){
 				// Generar respuesta con codigo: NOT_FOUND (404)
 				respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension);
+				status = STATUS_ERROR;
 				debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
 			}
 			close(file);
 		}
 
 
+		//
+		//	PERSISTENCIA
+		//
+
+		if (persistencia == ALIVE) {
+			FD_ZERO(&fdset); 
+			FD_SET(descriptorFichero, &fdset);
+			tv.tv_sec = 5;
+			tv.tv_usec = 0;
+			status = STATUS_OK;
+			retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv);
+			printf("\nRETVAL: %d", retval);
+		} else {
+			retval = 0;
+		}
+
+		
 
 		
 		
@@ -502,7 +561,7 @@ void process_web_request(int descriptorFichero)
 		//
 
 	}
-	
+	printf("\nSaliendo..");
 	close(descriptorFichero);
 	exit(1);
 }
