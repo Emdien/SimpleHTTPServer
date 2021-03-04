@@ -324,6 +324,10 @@ void process_web_request(int descriptorFichero)
 		//
 		ssize_t readsize = read(descriptorFichero, buffer, BUFSIZE);
 		debug(LOG, "Cadena recibida", buffer, descriptorFichero);
+
+		printf("%ld", readsize);
+
+
 		
 		
 		//
@@ -333,8 +337,12 @@ void process_web_request(int descriptorFichero)
 		if (readsize < 0) {
 			debug(ERROR, "Error en la lectura", "Ha ocurrido un error al leer el buffer ", descriptorFichero);
 			close(descriptorFichero);
-		} 
-		
+		} else if (readsize == 0) {
+			status = STATUS_ERROR;
+		}
+
+
+
 		//
 		// Si la lectura tiene datos válidos terminar el buffer con un \0
 		//
@@ -346,6 +354,8 @@ void process_web_request(int descriptorFichero)
 		//
 		
 		// Y si en vez de eliminarlos, extraigo elementos utilizando \r\n como separador?
+
+		
 		
 		char * request_line;	// Linea de peticion HTTP
 		char * save_ptrl;		// Usado para mantener la posicion en strtok_r() del mensaje completo.
@@ -365,7 +375,7 @@ void process_web_request(int descriptorFichero)
 		char * server;			// Cadena correspondiente a la direccion del servidor
 		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
 
-		if (header_line != NULL) {		// Compruebo si hay cabecera 
+		if (header_line != NULL && status == STATUS_OK) {		// Compruebo si hay cabecera 
 
 			host = strtok(header_line, " ");
 			server = strtok(NULL, "");
@@ -376,7 +386,7 @@ void process_web_request(int descriptorFichero)
 				debug(ERROR, "Header error", "Cabecera mal formada", descriptorFichero);
 			}
 
-		} else {
+		} else if (status == STATUS_OK){
 			// Generar respuesta?
 			respuesta(descriptorFichero, -1, BAD_REQUEST, -1, NULL);
 			status = STATUS_ERROR;
