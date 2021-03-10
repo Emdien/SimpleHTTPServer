@@ -32,7 +32,7 @@
 #define ALIVE 10
 #define CLOSE 11
 #define STATUS_OK 55
-#define STATUS_ERROR 56
+#define STATUS_CLOSE 56
 #define EMAIL "gonzalo.nicolasm%40um.es"
 
 
@@ -243,7 +243,7 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	strcat(respuesta, "\r\n");
 	debug(LOG, respuesta, "", fd);
 
-	printf("\n%s", respuesta);
+	printf("\nRESPUESTA: %s", respuesta);
 
 	write(fd, respuesta, strlen(respuesta));
 
@@ -299,6 +299,8 @@ void process_web_request(int descriptorFichero)
 
 		char buffer[BUFSIZE];	// Buffer	
 		memset(buffer, 0, sizeof buffer);
+
+
 		//
 		// Leer la petición HTTP
 		//
@@ -313,7 +315,7 @@ void process_web_request(int descriptorFichero)
 			debug(ERROR, "Error en la lectura", "Ha ocurrido un error al leer el buffer ", descriptorFichero);
 			close(descriptorFichero);
 		} else if (readsize == 0) {
-			status = STATUS_ERROR;
+			status = STATUS_CLOSE;
 		}
 
 		//
@@ -321,6 +323,10 @@ void process_web_request(int descriptorFichero)
 		//
 		
 		buffer[readsize] = END_CHAR;
+		char post_msg[BUFSIZE];
+		memset(post_msg, 0, sizeof post_msg);
+		memcpy(post_msg, buffer, sizeof buffer);
+		
 		
 		//
 		// Se eliminan los caracteres de retorno de carro y nueva linea
@@ -344,15 +350,18 @@ void process_web_request(int descriptorFichero)
 		char * server;			// Cadena correspondiente a la direccion del servidor
 		header_line = strtok_r(NULL, "\r\n", &save_ptrl);	// Primera linea de cabecera
 
+
 		if (header_line != NULL && status == STATUS_OK) {		// Compruebo si hay cabecera 
 
 			host = strtok(header_line, " ");
 			server = strtok(NULL, "");
 
 			if (host == NULL || server == NULL) {
-				respuesta(descriptorFichero, -1, BAD_REQUEST, -1, -1, persistencia);
-				status = STATUS_ERROR;
+				int file = open("400.html", O_RDONLY);
+				respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+				status = STATUS_CLOSE;
 				debug(ERROR, "Header error", "Cabecera mal formada", descriptorFichero);
+				close(file);
 			}
 
 
@@ -360,9 +369,11 @@ void process_web_request(int descriptorFichero)
 
 		} else if (status == STATUS_OK){
 			// Generar respuesta?
-			respuesta(descriptorFichero, -1, BAD_REQUEST, -1, -1, persistencia);
-			status = STATUS_ERROR;
+			int file = open("400.html", O_RDONLY);
+			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+			status = STATUS_CLOSE;
 			debug(ERROR, "Header error", "No existe cabecera HTTP", descriptorFichero);
+			close(file);
 
 		}
 
@@ -387,7 +398,6 @@ void process_web_request(int descriptorFichero)
 					persistencia = ALIVE;
 				} 
 
-				//debug(LOG, connection, connection_type, descriptorFichero);
 				found_connection = 1;
 			}
 			else if(strcmp(line, "Cookie:") == 0) {
@@ -413,7 +423,8 @@ void process_web_request(int descriptorFichero)
 			if (cookie_value > 10) {
 				int file = open("error.html", O_RDONLY);
 				respuesta(descriptorFichero, file, PROHIBIDO, 9, 10, persistencia);
-				status = STATUS_ERROR;
+				status = STATUS_CLOSE;
+				close(file);
 			}
 		}
 		
@@ -427,24 +438,28 @@ void process_web_request(int descriptorFichero)
 		// Compruebo los casos de ERROR. Mas facil manejar
 
 		// Si no hay ningun error, continuo analizando.
-		// Nota: metodo POST todavia no implementado.
 
 		int method_code = parse_method(metodo);
 		if(status == STATUS_OK){
+			int file;
 			switch (method_code)
 			{
 				case -1:
 					// Generar respuesta con codigo: NOT_IMPLEMENTED (501)
-					respuesta(descriptorFichero, -1, NOT_IMPLEMENTED, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
-					debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);				
+					file = open("501.html", O_RDONLY);
+					respuesta(descriptorFichero, file, NOT_IMPLEMENTED, 9, -1, persistencia);
+					status = STATUS_CLOSE;
+					debug(NOT_IMPLEMENTED, "Method error", metodo, descriptorFichero);
+					close(file);				
 					break;
 				
 				case -2:
 					// Generar respuesta con codigo: BAD_REQUEST (400)
-					respuesta(descriptorFichero, -1, BAD_REQUEST, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("400.html", O_RDONLY);
+					respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+					status = STATUS_CLOSE;
 					debug(BAD_REQUEST, "Method error", metodo, descriptorFichero);
+					close(file);
 					break;
 				
 				default:
@@ -470,16 +485,19 @@ void process_web_request(int descriptorFichero)
 			{
 				case -2:
 					// Generar respuesta con codigo: BAD_REQUEST (400)
-					respuesta(descriptorFichero, -1, BAD_REQUEST, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("400.html", O_RDONLY);
+					respuesta(descriptorFichero, file, BAD_REQUEST, 9, cookie_value, persistencia);
+					status = STATUS_CLOSE;
 					debug(BAD_REQUEST, "Path error", path, descriptorFichero);
+					close(file);
 					break;
 				case -1:
 					// Generar respuesta con codigo: FORBIDDEN (403)
 					file = open("error.html", O_RDONLY);
 					respuesta(descriptorFichero, file, PROHIBIDO, file, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					status = STATUS_CLOSE;
 					debug(PROHIBIDO, "Path error", path, descriptorFichero);
+					close(file);
 					break;
 				
 				default:
@@ -500,6 +518,8 @@ void process_web_request(int descriptorFichero)
 
 		// Caso peticion tipo "/"
 
+		//printf("%s", buffer);
+
 		if (strcmp(metodo, "GET") == 0) {
 			if (path_code == 1 && status == STATUS_OK) {
 				strcat(filepath, "index.html");
@@ -512,8 +532,9 @@ void process_web_request(int descriptorFichero)
 					//debug(LOG, "Generado respuesta", "index.html", descriptorFichero);
 				} else {
 					// Generar respuesta con codigo: NOT_FOUND (404)
-					respuesta(descriptorFichero, -1, NOENCONTRADO, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("404.html", O_RDONLY);
+					respuesta(descriptorFichero, file, NOENCONTRADO, 9, -1, persistencia);
+					status = STATUS_CLOSE;
 					debug(NOENCONTRADO, "No se ha encontrado el fichero", "index.html", descriptorFichero);
 				}
 				close(file);
@@ -522,20 +543,25 @@ void process_web_request(int descriptorFichero)
 			else if (path_code > 1 && status == STATUS_OK) {	// Otro caso
 
 				// Tengo que comprobar la extension
+				int file;
 				nExtension = parse_extension(path);
 				switch (nExtension)
 				{
 				case -2:
 					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
-					respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("400.html", O_RDONLY);
+					respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+					status = STATUS_CLOSE;
 					debug(UNSUPPORTED_MEDIA, "Fichero sin extension", path, descriptorFichero);
+					close(file);
 					break;
 				case -1:
 					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
-					respuesta(descriptorFichero, -1, UNSUPPORTED_MEDIA, -1, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("415.html", O_RDONLY);
+					respuesta(descriptorFichero, file, UNSUPPORTED_MEDIA, 9, -1, persistencia);
+					status = STATUS_CLOSE;
 					debug(UNSUPPORTED_MEDIA, "Fichero con extension no soportada", path, descriptorFichero);
+					close(file);
 					break;
 				default:
 					break;
@@ -547,7 +573,7 @@ void process_web_request(int descriptorFichero)
 				//  v
 				// /path/......
 
-				int file = open(filepath, O_RDONLY);
+				file = open(filepath, O_RDONLY);
 
 				if (file != -1 && status == STATUS_OK) {
 					// Generar respuesta con codigo: OK (200)
@@ -555,8 +581,9 @@ void process_web_request(int descriptorFichero)
 					//debug(LOG, "Generado respuesta", filepath, descriptorFichero);
 				} else if (file < 0 && status == STATUS_OK){
 					// Generar respuesta con codigo: NOT_FOUND (404)
-					respuesta(descriptorFichero, -1, NOENCONTRADO, nExtension, cookie_value, persistencia);
-					status = STATUS_ERROR;
+					file = open("404.html", O_RDONLY);
+					respuesta(descriptorFichero, file, NOENCONTRADO, nExtension, -1, persistencia);
+					status = STATUS_CLOSE;
 					debug(NOENCONTRADO, "No se ha encontrado el fichero", filepath, descriptorFichero);
 				}
 				close(file);
@@ -565,25 +592,41 @@ void process_web_request(int descriptorFichero)
 			char * email;
 			char * content_line;
 			int found_email = 0;
+			char * save_ptr_post;
 
-			while(!found_email && (content_line = strtok(buffer, "\r\n")) != NULL) {	// Voy a leer de nuevo, puede pasar que se haya leido antes todo el mensaje.
+			printf("\n%s", post_msg);
+
+			strtok_r(post_msg, "\r\n", &save_ptr_post);
+
+			while(found_email != 1 && (content_line = strtok_r(NULL, "\r\n", &save_ptr_post)) != NULL) {	// Voy a leer de nuevo, puede pasar que se haya leido antes todo el mensaje.
 				email = strtok(content_line, "=");
 				if (strcmp(email, "email") == 0) {
 					email = strtok(NULL, "\n\r");
 					found_email = 1;
 					if (email == NULL) {
-						respuesta(descriptorFichero, -1, BAD_REQUEST, -1, cookie_value, persistencia);
-						status = STATUS_ERROR;
+						int file = open("400.html", O_RDONLY);
+						respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+						status = STATUS_CLOSE;
 						debug(BAD_REQUEST, "No se ha enviado una direccion email", email, descriptorFichero);
+						close(file);
 					}
 				}
 			}
 
 			if (status == STATUS_OK && email != NULL) {
 				if (strcmp(email, EMAIL) == 0) {
+					int file = open("email_success.html", O_RDONLY);
+					respuesta(descriptorFichero, file, OK, 9, cookie_value, persistencia);
+					status = STATUS_CLOSE;
 					debug(LOG, "Email correcto recibido", email, descriptorFichero);
+					close(file);
+
 				} else {
-					debug(LOG, "Email erroneo recibido", email, descriptorFichero);
+					int file = open("email_error.html", O_RDONLY);
+					respuesta(descriptorFichero, file, OK, 9, cookie_value, persistencia);
+					status = STATUS_CLOSE;
+					debug(LOG, "Email correcto recibido", email, descriptorFichero);
+					close(file);
 				}
 			}
 
