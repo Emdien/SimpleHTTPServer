@@ -233,12 +233,11 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 
 	if (cookie != -1) {
 		memset(aux, 0, sizeof aux);	
-		sprintf(aux, "Set-Cookie: cookie_counter=%d; Max-Age=120\r\n", cookie);
+		sprintf(aux, "Set-Cookie: cookie_counter=%d; Max-Age=60\r\n", cookie);
 		strcat(respuesta, aux);
 	}
 
 	strcat(respuesta, "\r\n");
-	//debug(LOG, respuesta, "", fd);
 
 	printf("\nRESPUESTA: %s", respuesta);
 
@@ -356,6 +355,15 @@ void process_web_request(int descriptorFichero)
 
 		// Si no hay ningun error, continuo analizando.
 
+		if (metodo == NULL || path == NULL || protocolo == NULL) {
+			int file = open("400.html", O_RDONLY);
+			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+			status = STATUS_CLOSE;
+			debug(BAD_REQUEST, "Peticion mal formada", protocolo, descriptorFichero);
+			close(file);
+			break;
+		}
+
 		int method_code = parse_method(metodo);
 		if(status == STATUS_OK){
 			int file;
@@ -423,14 +431,7 @@ void process_web_request(int descriptorFichero)
 
 		}
 
-		if (status == STATUS_OK && protocolo == NULL) {
-			int file = open("400.html", O_RDONLY);
-			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
-			status = STATUS_CLOSE;
-			debug(BAD_REQUEST, "Protocol error", protocolo, descriptorFichero);
-			close(file);
-			break;
-		}
+		
 
 		char * header_line;		// Primera linea de cabecera HTTP
 		char * host;			// Cadena correspondiente a "Host:""
@@ -452,7 +453,6 @@ void process_web_request(int descriptorFichero)
 			}
 
 
-			// Comprobar que esta bien formada?
 
 		} else if (status == STATUS_OK){
 
