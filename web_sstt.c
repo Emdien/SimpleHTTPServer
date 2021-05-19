@@ -240,7 +240,7 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	strcat(respuesta, "\r\n");
 	//debug(LOG, respuesta, "", fd);
 
-	//printf("\nRESPUESTA: %s", respuesta);
+	printf("\nRESPUESTA: %s", respuesta);
 
 	write(fd, respuesta, strlen(respuesta));
 
@@ -266,6 +266,7 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 
 
 }
+
 
 void process_web_request(int descriptorFichero)
 {
@@ -422,7 +423,7 @@ void process_web_request(int descriptorFichero)
 
 		}
 
-		if (status = STATUS_OK && protocolo == NULL) {
+		if (status == STATUS_OK && protocolo == NULL) {
 			int file = open("400.html", O_RDONLY);
 			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
 			status = STATUS_CLOSE;
@@ -672,34 +673,9 @@ void process_web_request(int descriptorFichero)
 			tv.tv_usec = 0;
 			status = STATUS_OK;
 			retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv) > 0; 
-			//printf("\nRETVAL: %d", retval);
 		} else {
 			retval = 0;
-			//printf("\nhumu");
 		}
-
-		
-
-		
-		
-		//
-		//	Como se trata el caso excepcional de la URL que no apunta a ningún fichero
-		//	html
-		//
-
-		
-		
-		
-		//
-		//	Evaluar el tipo de fichero que se está solicitando, y actuar en
-		//	consecuencia devolviendolo si se soporta u devolviendo el error correspondiente en otro caso
-		//
-		
-		
-		//
-		//	En caso de que el fichero sea soportado, exista, etc. se envia el fichero con la cabecera
-		//	correspondiente, y el envio del fichero se hace en blockes de un máximo de  8kB
-		//
 
 	}
 	printf("\nSaliendo..");
@@ -736,11 +712,9 @@ int main(int argc, char **argv)
 	}
 	// Hacemos que el proceso sea un demonio sin hijos zombies
 	if(fork() != 0){
-		//(void)printf("Entra al fork");
 		return 0; // El proceso padre devuelve un OK al shell
 	}
 	
-	//(void)printf("No Entra al fork");
 
 	(void)signal(SIGCHLD, SIG_IGN); // Ignoramos a los hijos
 	(void)signal(SIGHUP, SIG_IGN); // Ignoramos cuelgues
