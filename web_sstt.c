@@ -422,11 +422,11 @@ void process_web_request(int descriptorFichero)
 
 		}
 
-		if (protocolo == NULL) {
+		if (status = STATUS_OK && protocolo == NULL) {
 			int file = open("400.html", O_RDONLY);
 			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
 			status = STATUS_CLOSE;
-			debug(BAD_REQUEST, "Path error", path, descriptorFichero);
+			debug(BAD_REQUEST, "Protocol error", protocolo, descriptorFichero);
 			close(file);
 			break;
 		}
