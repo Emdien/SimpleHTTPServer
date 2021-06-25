@@ -248,9 +248,9 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	// Si hay fichero abierto, empiezo a escribir.
 
 	if (file != -1) {
-		int bytes_leidos;
-		while((bytes_leidos = read(file, &respuesta, BUFSIZE)) > 0) {
-			write(fd, respuesta, bytes_leidos);
+		int readsize;
+		while((readsize = read(file, &respuesta, BUFSIZE)) > 0) {
+			write(fd, respuesta, readsize);
 		}
 	}
 
@@ -277,6 +277,7 @@ int comprobar_fd(int fd, long int sec, long int usec) {
 void process_web_request(int descriptorFichero)
 {
 	int persistencia = ALIVE;
+	int status = STATUS_OK;
 
 	while (comprobar_fd(descriptorFichero, 15, 0)) {
 
