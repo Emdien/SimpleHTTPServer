@@ -124,7 +124,7 @@ int parse_path(char * path) {
 }
 
 int parse_extension(char * path) {
-	char * ext = strchr(path, '.');		// +1 ?
+	char * ext = strchr(path, '.');
 
 	if (ext == NULL) {		// Fichero sin extension
 		return -2;
@@ -197,7 +197,7 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	//	Linea Server
 	strcat(respuesta, "Server: www.sstt8405.org\r\n");
 
-	//	Last modified - ETag - Accept-Ranges (?)
+	//	Last modified - ETag - Accept-Ranges
 
 	//	Linea Content-Length
 	struct stat filestat;
@@ -239,8 +239,6 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 
 	strcat(respuesta, "\r\n");
 
-	printf("\nRESPUESTA: %s", respuesta);
-
 	write(fd, respuesta, strlen(respuesta));
 
 	//
@@ -250,58 +248,53 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	// Si hay fichero abierto, empiezo a escribir.
 
 	if (file != -1) {
-		char buffer[BUFSIZE];	// Buffer de 8k
-		memset(buffer, 0, sizeof buffer);		// Preparo el buffer
-
-		ssize_t readsize;
-		while(readsize = read(file, buffer, BUFSIZE)) {
-			write(fd, buffer, BUFSIZE);
+		int bytes_leidos;
+		while((bytes_leidos = read(file, &respuesta, BUFSIZE)) > 0) {
+			write(fd, respuesta, bytes_leidos);
 		}
-
-
 	}
 
+}
 
+int comprobar_fd(int fd, long int sec, long int usec) {
+	
+	fd_set rfds;
+	struct timeval tv;
+	FD_ZERO(&rfds);
+	FD_SET(fd, &rfds);
+	tv.tv_sec = sec;
+	tv.tv_usec = usec;
 
+	if (select(fd + 1, &rfds, NULL, NULL, &tv) < 0) {
+		perror("select()");
+		exit(EXIT_FAILURE);
+	}
 
+	return (FD_ISSET(fd, &rfds));
 }
 
 
 void process_web_request(int descriptorFichero)
 {
-	debug(LOG,"request","Ha llegado una peticion",descriptorFichero);
-	//
-	// Definir buffer y variables necesarias para leer las peticiones
-	//
+	int persistencia = ALIVE;
 
-	int persistencia = ALIVE;	// Variable de persistencia. Por defecto, se mantiene la conexion abierta
-	int status = STATUS_OK;		// Variable de estado. Sirve para indicar si se ha producido un error y no mandar multiples respuestas.
+	while (comprobar_fd(descriptorFichero, 15, 0)) {
 
-	fd_set fdset;	// Conjunto de descriptores de ficheros.
-	struct timeval tv;		// Timeout
-	FD_ZERO(&fdset); 
-	FD_SET(descriptorFichero, &fdset);
-	// Espero hasta 10 segundos (Siguiendo el ejemplo de man 2 select)
-
-	tv.tv_sec = 10;
-	tv.tv_usec = 0;
-
-	int retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv);
-
-
-	while (persistencia == ALIVE && retval) {
+		debug(LOG,"request","Ha llegado una peticion",descriptorFichero);
 
 		// Inicio memoria de buffer todo a ceros, y preparo una variable
 		// para saber cuanto he leido del descriptor de fichero.
 
-		char buffer[BUFSIZE];	
-		memset(buffer, 0, sizeof buffer);
+		char buffer[BUFSIZE] = {0};
 
 
 		//
 		// Leer la petición HTTP
 		//
-		ssize_t readsize = read(descriptorFichero, buffer, BUFSIZE);
+		int readsize = read(descriptorFichero, buffer, BUFSIZE);
+		while(comprobar_fd(descriptorFichero, 0, 10000)) {
+			readsize += read(descriptorFichero, buffer + readsize, BUFSIZE - readsize);
+		}
 		debug(LOG, "Cadena recibida", buffer, descriptorFichero);
 
 		//
@@ -311,16 +304,15 @@ void process_web_request(int descriptorFichero)
 		if (readsize < 0) {
 			debug(ERROR, "Error en la lectura", "Ha ocurrido un error al leer el buffer ", descriptorFichero);
 			close(descriptorFichero);
-		} else if (readsize == 0) {
-			status = STATUS_CLOSE;
-		}
+			exit(EXIT_FAILURE);
+		} 
 
 		//
 		// Si la lectura tiene datos válidos terminar el buffer con un \0
 		//
 		
 		buffer[readsize] = END_CHAR;
-		char post_msg[BUFSIZE];
+		char post_msg[BUFSIZE] = {0};
 		memset(post_msg, 0, sizeof post_msg);
 		memcpy(post_msg, buffer, sizeof buffer);
 		
@@ -356,12 +348,14 @@ void process_web_request(int descriptorFichero)
 		// Si no hay ningun error, continuo analizando.
 
 		if (metodo == NULL || path == NULL || protocolo == NULL) {
-			int file = open("400.html", O_RDONLY);
-			respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
-			status = STATUS_CLOSE;
-			debug(BAD_REQUEST, "Peticion mal formada", protocolo, descriptorFichero);
-			close(file);
-			break;
+			if(status == STATUS_OK) {
+				int file = open("400.html", O_RDONLY);
+				respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
+				status = STATUS_CLOSE;
+				debug(BAD_REQUEST, "Peticion mal formada", "Metodo, path o protocolo nulos", descriptorFichero);
+				close(file);
+			}
+			
 		}
 
 		int method_code = parse_method(metodo);
@@ -564,7 +558,7 @@ void process_web_request(int descriptorFichero)
 				switch (nExtension)
 				{
 				case -2:
-					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) -- O hacer un BAD_REQUEST(400) ?
+					// Generar respuesta con codigo:  BAD_REQUEST(400) 
 					file = open("400.html", O_RDONLY);
 					respuesta(descriptorFichero, file, BAD_REQUEST, 9, -1, persistencia);
 					status = STATUS_CLOSE;
@@ -573,7 +567,7 @@ void process_web_request(int descriptorFichero)
 					break;
 
 				case -1:
-					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415) - Quizas 406?
+					// Generar respuesta con codigo: UNSUPPORTED_MEDIA (415)
 					file = open("415.html", O_RDONLY);
 					respuesta(descriptorFichero, file, UNSUPPORTED_MEDIA, 9, -1, persistencia);
 					status = STATUS_CLOSE;
@@ -658,25 +652,6 @@ void process_web_request(int descriptorFichero)
 			}
 
 		}
-
-
-
-
-		//
-		//	PERSISTENCIA
-		//
-
-		if (persistencia == ALIVE) {
-			FD_ZERO(&fdset); 
-			FD_SET(descriptorFichero, &fdset);
-			tv.tv_sec = 10;
-			tv.tv_usec = 0;
-			status = STATUS_OK;
-			retval = select(descriptorFichero+1, &fdset, NULL, NULL, &tv) > 0; 
-		} else {
-			retval = 0;
-		}
-
 	}
 	printf("\nSaliendo..");
 	close(descriptorFichero);
