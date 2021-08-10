@@ -34,6 +34,7 @@
 #define STATUS_OK 55
 #define STATUS_CLOSE 56
 #define EMAIL "gonzalo.nicolasm%40um.es"
+#define PERS_SECONDS 15
 
 
 struct {
@@ -216,8 +217,10 @@ void respuesta(int fd, int file, int codigo, int nExtension, int cookie, int per
 	if (persistencia == CLOSE) {
 		strcat(respuesta, "Connection: close\r\n");
 	} else {
+		memset(aux, 0, sizeof aux);
 		strcat(respuesta, "Connection: Keep-Alive\r\n");
-		strcat(respuesta, "Keep-Alive: timeout=10, max=100\r\n");
+		sprintf(aux, "Keep-Alive: timeout=%d, max=100\r\n", PERS_SECONDS);
+		strcat(respuesta, aux);
 		
 	}
 
@@ -279,7 +282,7 @@ void process_web_request(int descriptorFichero)
 	int persistencia = ALIVE;
 	int status = STATUS_OK;
 
-	while (comprobar_fd(descriptorFichero, 15, 0)) {
+	while (comprobar_fd(descriptorFichero, PERS_SECONDS, 0)) {
 
 		debug(LOG,"request","Ha llegado una peticion",descriptorFichero);
 
@@ -412,7 +415,7 @@ void process_web_request(int descriptorFichero)
 
 				case -1:
 
-					file = open("error.html", O_RDONLY);
+					file = open("403.html", O_RDONLY);
 					respuesta(descriptorFichero, file, PROHIBIDO, file, -1, persistencia);
 					status = STATUS_CLOSE;
 					debug(PROHIBIDO, "Path error", path, descriptorFichero);
@@ -505,7 +508,7 @@ void process_web_request(int descriptorFichero)
 			cookie_value++;
 			if (cookie_value > 10) {
 
-				int file = open("error.html", O_RDONLY);
+				int file = open("403.html", O_RDONLY);
 				respuesta(descriptorFichero, file, PROHIBIDO, 9, 10, persistencia);
 				status = STATUS_CLOSE;
 				close(file);
